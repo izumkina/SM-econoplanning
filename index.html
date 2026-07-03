@@ -755,79 +755,113 @@ function App() {
     setDirty(true);
   };
   function optimize() {
+    // точная оптимизация распределения (DP по бюджету) — корректно работает с S-образными кривыми
     const models = optTarget === "Все модели" ? MODELS : [optTarget];
-    const obj = bud => {
-      const r = computePlan({
-        ...budgets,
-        ...bud
-      }, mode);
-      return models.reduce((s, m) => s + r.out[m].media, 0);
-    };
-    const unlocked = SUB.filter(c => !locks[c.name]);
-    const pool0 = total - lockedSum;
-    if (pool0 <= 0 || !unlocked.length) return;
-    const minChs = unlocked.filter(c => OPMIN[c.name]);
-    const n = minChs.length;
-    let bestPlan = null,
-      bestObj = -Infinity;
-    for (let mask = 0; mask < 1 << n; mask++) {
-      const cur = {};
-      unlocked.forEach(c => cur[c.name] = 0);
-      let pool = pool0,
-        feasible = true;
-      minChs.forEach((c, i) => {
-        if (mask & 1 << i) {
-          cur[c.name] = OPMIN[c.name];
-          pool -= OPMIN[c.name];
-        }
+    const feats = ENGINE.models[MODELS[0]].features.map(f => f.feature);
+    const floor = {},
+      subsOf = {},
+      unlockedSubs = {};
+    feats.forEach(fe => {
+      floor[fe] = 0;
+      subsOf[fe] = [];
+      unlockedSubs[fe] = [];
+    });
+    SUB.forEach(sc => {
+      subsOf[sc.feature].push(sc);
+      if (locks[sc.name]) floor[sc.feature] += budgets[sc.name] || 0;else unlockedSubs[sc.feature].push(sc);
+    });
+    const pool = total - lockedSum;
+    if (pool <= 0) return;
+    const varFeats = feats.filter(fe => unlockedSubs[fe].length > 0);
+    const featMin = {},
+      featMax = {};
+    varFeats.forEach(fe => {
+      let mn = 0,
+        mx = Infinity;
+      unlockedSubs[fe].forEach(sc => {
+        if (OPMIN[sc.name]) mn = Math.max(mn, OPMIN[sc.name]);
+        if (OPMAX[sc.name]) mx = Math.min(mx, OPMAX[sc.name]);
       });
-      if (pool < -1) continue;
-      const grow = unlocked.filter(c => !(OPMIN[c.name] && !(mask & 1 << minChs.indexOf(c))));
-      const step = Math.max(1, pool / 300);
-      let left = pool,
-        g = 0;
-      while (left > step * 0.5 && g < 500) {
-        g++;
-        const b0 = obj(cur);
-        let best = null,
-          bg = -Infinity;
-        for (const c of grow) {
-          const capMax = OPMAX[c.name] || Infinity;
-          if (cur[c.name] + step > capMax) continue;
-          const gg = obj({
-            ...cur,
-            [c.name]: cur[c.name] + step
-          }) - b0;
-          if (gg > bg) {
-            bg = gg;
-            best = c.name;
+      featMin[fe] = mn;
+      featMax[fe] = mx;
+    });
+    const N = 200,
+      step = pool / N,
+      NEG = -1e30;
+    const contribFeat = (fe, budget) => {
+      let s = 0;
+      for (const m of models) {
+        const f = ENGINE.models[m].features.find(z => z.feature === fe);
+        s += effContrib(f.curve, BD[fe], budget, mode);
+      }
+      return s;
+    };
+    const V = varFeats.map(fe => {
+      const row = new Array(N + 1);
+      for (let u = 0; u <= N; u++) {
+        const bb = floor[fe] + u * step;
+        if (featMin[fe] && bb > 1 && bb < featMin[fe] - 1) {
+          row[u] = null;
+          continue;
+        }
+        if (bb > featMax[fe] + 1) {
+          row[u] = null;
+          continue;
+        }
+        row[u] = contribFeat(fe, bb);
+      }
+      return row;
+    });
+    let dp = new Array(N + 1).fill(NEG);
+    dp[0] = 0;
+    const par = [];
+    for (let fi = 0; fi < varFeats.length; fi++) {
+      const ndp = new Array(N + 1).fill(NEG),
+        pick = new Array(N + 1).fill(0);
+      for (let bq = 0; bq <= N; bq++) {
+        if (dp[bq] === NEG) continue;
+        for (let u = 0; u + bq <= N; u++) {
+          const v = V[fi][u];
+          if (v == null) continue;
+          const val = dp[bq] + v;
+          if (val > ndp[bq + u]) {
+            ndp[bq + u] = val;
+            pick[bq + u] = u;
           }
         }
-        if (!best || bg <= 0) break;
-        cur[best] += step;
-        left -= step;
       }
-      const o = obj(cur);
-      if (o > bestObj) {
-        bestObj = o;
-        bestPlan = {
-          ...cur
-        };
-      }
+      dp = ndp;
+      par.push(pick);
     }
-    if (bestPlan) {
-      const nb = {
-        ...budgets
-      };
-      unlocked.forEach(c => nb[c.name] = Math.round(bestPlan[c.name] || 0));
-      setBudgets(nb);
-      setCommitted({
-        budgets: nb,
-        mode,
-        ...computePlan(nb, mode)
+    let bestB = 0;
+    for (let bq = 0; bq <= N; bq++) {
+      if (dp[bq] > dp[bestB]) bestB = bq;
+    }
+    const extra = {};
+    let bb = bestB;
+    for (let fi = varFeats.length - 1; fi >= 0; fi--) {
+      const u = par[fi][bb];
+      extra[varFeats[fi]] = u * step;
+      bb -= u;
+    }
+    const nb = {
+      ...budgets
+    };
+    varFeats.forEach(fe => {
+      const subs = unlockedSubs[fe];
+      const add = extra[fe] || 0;
+      const wsum = subs.reduce((s, sc) => s + (sc.b0 || 1), 0);
+      subs.forEach(sc => {
+        nb[sc.name] = Math.round(add * ((sc.b0 || 1) / wsum));
       });
-      setDirty(false);
-    }
+    });
+    setBudgets(nb);
+    setCommitted({
+      budgets: nb,
+      mode,
+      ...computePlan(nb, mode)
+    });
+    setDirty(false);
   }
   const lbl = {
     fontSize: 10,
