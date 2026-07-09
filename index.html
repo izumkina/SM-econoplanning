@@ -1316,7 +1316,7 @@ function App() {
       fontSize: 11,
       color: C.muted
     }
-  }, "v12")), /*#__PURE__*/React.createElement("div", {
+  }, "v13")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexWrap: "wrap",
@@ -2018,7 +2018,127 @@ function Bars({
     }
   }, M2(v), "\u043C"))));
 }
+
+// ===== Экран логина ("защита от дурака": клиентская, пароль виден в исходнике) =====
+const AUTH = {
+  user: "admin",
+  pass: "sportmaster2026"
+}; // ← логин/пароль менять здесь
+function Gate() {
+  const [ok, setOk] = useState(() => {
+    try {
+      return sessionStorage.getItem("sm_ok") === "1";
+    } catch (e) {
+      return false;
+    }
+  });
+  const [u, setU] = useState("");
+  const [p, setP] = useState("");
+  const [err, setErr] = useState(false);
+  if (ok) return React.createElement(App);
+  const go = () => {
+    if (u.trim() === AUTH.user && p === AUTH.pass) {
+      setErr(false);
+      setOk(true);
+      try {
+        sessionStorage.setItem("sm_ok", "1");
+      } catch (e) {}
+    } else setErr(true);
+  };
+  const key = e => {
+    if (e.key === "Enter") go();
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: C.paper,
+      fontFamily: FONT
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 320,
+      background: C.panel,
+      border: "1px solid " + C.line,
+      borderRadius: 12,
+      padding: 28,
+      boxShadow: "0 8px 30px rgba(0,0,0,0.06)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      letterSpacing: "0.18em",
+      textTransform: "uppercase",
+      color: C.muted
+    }
+  }, "\u0421\u043F\u043E\u0440\u0442\u043C\u0430\u0441\u0442\u0435\u0440"), /*#__PURE__*/React.createElement("h1", {
+    style: {
+      fontSize: 20,
+      fontWeight: 600,
+      margin: "4px 0 18px"
+    }
+  }, "\u041F\u043B\u0430\u043D\u0435\u0440 \u043C\u0435\u0434\u0438\u0430\u0441\u043F\u043B\u0438\u0442\u0430"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: C.muted
+    }
+  }, "\u041B\u043E\u0433\u0438\u043D"), /*#__PURE__*/React.createElement("input", {
+    value: u,
+    onChange: e => setU(e.target.value),
+    onKeyDown: key,
+    style: {
+      width: "100%",
+      boxSizing: "border-box",
+      padding: "10px 12px",
+      margin: "4px 0 12px",
+      border: "1px solid " + C.line,
+      borderRadius: 8,
+      fontSize: 14
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: C.muted
+    }
+  }, "\u041F\u0430\u0440\u043E\u043B\u044C"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: p,
+    onChange: e => setP(e.target.value),
+    onKeyDown: key,
+    style: {
+      width: "100%",
+      boxSizing: "border-box",
+      padding: "10px 12px",
+      margin: "4px 0 4px",
+      border: "1px solid " + (err ? C.neg : C.line),
+      borderRadius: 8,
+      fontSize: 14
+    }
+  }), err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.neg,
+      margin: "2px 0 8px"
+    }
+  }, "\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043B\u043E\u0433\u0438\u043D \u0438\u043B\u0438 \u043F\u0430\u0440\u043E\u043B\u044C"), /*#__PURE__*/React.createElement("button", {
+    onClick: go,
+    style: {
+      width: "100%",
+      marginTop: 10,
+      padding: "11px",
+      background: C.accent,
+      color: "#fff",
+      border: "none",
+      borderRadius: 8,
+      fontSize: 14,
+      fontWeight: 600,
+      cursor: "pointer"
+    }
+  }, "\u0412\u043E\u0439\u0442\u0438")));
+}
 var root=ReactDOM.createRoot(document.getElementById("root"));
-root.render(React.createElement(App));
+root.render(React.createElement(Gate));
 </script>
 </body></html>
