@@ -1100,8 +1100,7 @@ function App() {
     const reachGreedy = (cur, poolAmt, N, target) => {
       let left = poolAmt;
       const step = poolAmt / 300;
-      let g = 0,
-        rate0 = null;
+      let g = 0;
       while (left > step * 0.02 && g < 900) {
         g++;
         if (target && netReach(cur, 1) >= target) break;
@@ -1126,8 +1125,6 @@ function App() {
           }
         }
         if (!best || bestRate <= 0) break;
-        if (rate0 === null) rate0 = bestRate;
-        if (!target && bestRate < 0.02 * rate0) break; // охват насыщается — остаток отдаём в трафик
         cur[best] += bestAmt;
         left -= bestAmt;
       }
@@ -1241,9 +1238,13 @@ function App() {
     if (optTarget === "Охват (медиа)") {
       const cur = {};
       SUB.forEach(c => cur[c.name] = lockFloor(c));
-      const left = reachGreedy(cur, pool0, freq, null);
-      commit(trafficDP(cur, left, MODELS, true));
-      return; // эффективный охват + трафик на остаток
+      reachGreedy(cur, pool0, freq, null); // максимизируем охват на весь бюджет
+      const nb = {
+        ...budgets
+      };
+      unlocked.forEach(c => nb[c.name] = Math.round(cur[c.name]));
+      commit(nb);
+      return;
     }
     if (optTarget === "Микс: охват+трафик") {
       const cur = {};
@@ -1316,7 +1317,7 @@ function App() {
       fontSize: 11,
       color: C.muted
     }
-  }, "v13")), /*#__PURE__*/React.createElement("div", {
+  }, "v14")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexWrap: "wrap",
